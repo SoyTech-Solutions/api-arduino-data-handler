@@ -4,10 +4,10 @@ const serialport = require('serialport'); // importando serialport lib
 const express = require('express'); // importando express lib
 const mysql = require('mysql2'); // importando mysql2 lib
 
-const SERIAL_BAUD_RATE = process.env.BAUD_RATE; // taxa baud do serial
+const SERIAL_BAUD_RATE = Number(process.env.BAUD_RATE); // taxa baud do serial
 const PORT = process.env.PORT; // porta de execução da API
 
-const INSERT_MODE_ON = false; // modo inserção on true ou false
+const INSERT_MODE_ON = true; // modo inserção on true ou false
 
 
 // ============ ARDUINO SETUP =============
@@ -18,7 +18,8 @@ const serial = async (valuesDht11Humidity,valuesLm35temperature) => { // receben
             host: process.env.DB_HOST, // nome/ip da hospedagem
             user: process.env.DB_USER, // usuario 
             password: process.env.DB_PASSWORD, // senha do usuário
-            database: process.env.DB_DATABASE // nome do banco
+            database: process.env.DB_DATABASE,// nome do banco
+            port: 3306
     }).promise(); // promessa de execução
 
     const ports = await serialport.SerialPort.list(); // lista todas as portas disponíveis
@@ -45,12 +46,7 @@ const serial = async (valuesDht11Humidity,valuesLm35temperature) => { // receben
     });
 
     // definindo configurações de leitura  (adicionando um leitor)
-    arduino.pipe(new serialport.ReadlineParser( // leitor
-        { 
-            delimiter: '\r\n' // delimitador de leitura trazendo o cursor para o incio sempre após quebra de linha
-        }
-    )).on('data', async (data) => { // função on é o escutador de dados, sempre que receber os dados, ele enviará para ser manipulado na função abaixo
-
+    arduino.pipe(new serialport.ReadlineParser({ delimiter: '\r\n' })).on('data', async (data) => { 
         //console.log(data); // verificando o retorno
         const values = data.split(';'); // quebre o dado a cada ; exemplo (15.00;23.00)  
         const dht11Humidity = parseFloat(values[0]); // values[0] = 15.00
@@ -63,10 +59,16 @@ const serial = async (valuesDht11Humidity,valuesLm35temperature) => { // receben
         // se o modo de inserção estiver ativo
         if (INSERT_MODE_ON) {
 
+
             // execute uma query, um comando sql
             await poolDatabase.execute(
-                'INSERT INTO medida (dht11_umidade, lm35_temperatura) VALUES (?, ?)',
-                [dht11Humidity,lm35Temperature] // parametros que irão substituir os ? (dado individual, não o array)
+                'INSERT INTO sensorLog (dadoCapturado, dataHora, fkSensor) VALUES (?,now(),1)',
+                [dht11Humidity] // parametros que irão substituir os ? (dado individual, não o array)
+            );
+           // execute uma query, um comando sql
+            await poolDatabase.execute(
+                'INSERT INTO sensorLog (dadoCapturado, dataHora, fkSensor) VALUES (?,now(),2)',
+                [lm35Temperature] // parametros que irão substituir os ? (dado individual, não o array)
             );
             console.log(`valores inseridos no banco: ${dht11Humidity}%, ${lm35Temperature}°C`);
         
