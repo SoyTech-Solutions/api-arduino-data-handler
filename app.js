@@ -12,14 +12,14 @@ const INSERT_MODE_ON = true; // modo inserção on true ou false
 
 // ============ ARDUINO SETUP =============
 // função que executara tudo sempre que for chamada
-const serial = async (valuesDht11Humidity,valuesLm35temperature) => { // recebendo os arrays como parametro quando for chamada
+const serial = async (valuesDht11Humidity, valuesLm35temperature) => { // recebendo os arrays como parametro quando for chamada
     // criando o pool de conexões 
     let poolDatabase = mysql.createPool({
-            host: process.env.DB_HOST, // nome/ip da hospedagem
-            user: process.env.DB_USER, // usuario 
-            password: process.env.DB_PASSWORD, // senha do usuário
-            database: process.env.DB_DATABASE,// nome do banco
-            port: 3306
+        host: process.env.DB_HOST, // nome/ip da hospedagem
+        user: process.env.DB_USER, // usuario 
+        password: process.env.DB_PASSWORD, // senha do usuário
+        database: process.env.DB_DATABASE,// nome do banco
+        port: process.env.DB_PORT
     }).promise(); // promessa de execução
 
     const ports = await serialport.SerialPort.list(); // lista todas as portas disponíveis
@@ -40,40 +40,51 @@ const serial = async (valuesDht11Humidity,valuesLm35temperature) => { // receben
         }
     ); // crie um objeto do Serial
 
-    // abra o modo de leitura do arduino
+    // abra o modo de leitura do arduino 
     arduino.on('open', () => {
         console.log(`A leitura do arduino foi iniciada na porta ${portArduino.path} utilizando Baud Rate de ${SERIAL_BAUD_RATE}`);
     });
 
+
     // definindo configurações de leitura  (adicionando um leitor)
-    arduino.pipe(new serialport.ReadlineParser({ delimiter: '\r\n' })).on('data', async (data) => { 
+    arduino.pipe(new serialport.ReadlineParser({ delimiter: '\r\n' })).on('data', async (data) => {
         //console.log(data); // verificando o retorno
         const values = data.split(';'); // quebre o dado a cada ; exemplo (15.00;23.00)  
-        const dht11Humidity = parseFloat(values[0]); // values[0] = 15.00
-        const lm35Temperature = parseFloat(values[1]); // values[1] = 23.00
+        const lm35Temperature = parseFloat(values[0]); // values[0] = 23.00
+        const dht11Humidity = parseFloat(values[1]); // values[1] = 15.00
 
         // variável que foi recebida pela função como parametro
         valuesDht11Humidity.push(dht11Humidity); // adicionando ao final do array o novo valor capturado 
         valuesLm35temperature.push(lm35Temperature); // adicionando ao final do array o novo valor captura
 
+
+
         // se o modo de inserção estiver ativo
         if (INSERT_MODE_ON) {
-
+            let dht11Critico = 0;
+            let lm35Critico = 0;
+            if (dht11Humidity < 12 || dht11Humidity > 14.5) {
+                dht11Critico = 1;
+            }
+            if (lm35Temperature < 20 || lm35Temperature > 30) {
+                lm35Critico = 1;
+            }
 
             // execute uma query, um comando sql
             await poolDatabase.execute(
-                'INSERT INTO sensorLog (dadoCapturado, dataHora, fkSensor) VALUES (?,now(),1)',
-                [dht11Humidity] // parametros que irão substituir os ? (dado individual, não o array)
+                'INSERT INTO sensorLog (dadoCapturado, dataHora, critico, fkSensor) VALUES (?,now(),?,1)',
+                [dht11Humidity, dht11Critico] // parametros que irão substituir os ? (dado individual, não o array)
+
             );
-           // execute uma query, um comando sql
+            // execute uma query, um comando sql
             await poolDatabase.execute(
-                'INSERT INTO sensorLog (dadoCapturado, dataHora, fkSensor) VALUES (?,now(),2)',
-                [lm35Temperature] // parametros que irão substituir os ? (dado individual, não o array)
+                'INSERT INTO sensorLog (dadoCapturado, dataHora, critico, fkSensor) VALUES (?,now(),?,2)',
+                [lm35Temperature, lm35Critico] // parametros que irão substituir os ? (dado individual, não o array)
             );
             console.log(`valores inseridos no banco: ${dht11Humidity}%, ${lm35Temperature}°C`);
-        
+
         }
-        
+
     });
 
     // se ao inciar a leitura, capturar um erro, mostre o erro no terminal
@@ -84,11 +95,11 @@ const serial = async (valuesDht11Humidity,valuesLm35temperature) => { // receben
 
 
 // ================ EXPRESS SERVER SETUP =====================
-const expressServer = (valuesDht11Humidity,valuesLm35temperature) => { // recebendo os arrays como parametro quando for chamada
+const expressServer = (valuesDht11Humidity, valuesLm35temperature) => { // recebendo os arrays como parametro quando for chamada
     const app = express(); // instancia do express
 
     // configurando os middleware do servidor express
-    app.use((request, response, next) => { 
+    app.use((request, response, next) => {
         response.header('Access-Control-Allow-Origin', '*'); // permite que qualquer domínio * acesse os recursos do servidor
         response.header('Access-Control-Allow-Headers', 'Origin, Content-Type, Accept'); // quais tipos de headers (metodo get, post etc) mas também o origin, content assim vai
         next(); // chama a próxima função de middleware no ciclo para que seja aplicado em todas as rotas subsequentes
@@ -116,7 +127,7 @@ const expressServer = (valuesDht11Humidity,valuesLm35temperature) => { // recebe
     const valuesDht11Humidity = []; // instancia do array de valores do dht11 
     const valuesLm35temperature = []; // instancia do array de valores do lm35 
 
-    await serial( valuesDht11Humidity,valuesLm35temperature); // passando para a função serial os arrays vazio 
-    expressServer(valuesDht11Humidity,valuesLm35temperature); // passando para a função expressServer os arrays vazio
+    await serial(valuesDht11Humidity, valuesLm35temperature); // passando para a função serial os arrays vazio 
+    expressServer(valuesDht11Humidity, valuesLm35temperature); // passando para a função expressServer os arrays vazio
 })
-();
+    ();
